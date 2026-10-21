@@ -10,11 +10,19 @@ const {
 const TRACKS_DIR = path.join(__dirname, 'Tracks');
 
 // lowercased name (without extension) -> real file name on disk
+// Cached briefly: autocomplete fires on every keystroke and the Pi is slow at disk I/O
+const TRACKS_TTL_MS = 30_000;
+let tracksCache = null;
+let tracksCachedAt = 0;
 function loadTracks() {
+  const now = Date.now();
+  if (tracksCache && now - tracksCachedAt < TRACKS_TTL_MS) return tracksCache;
   const map = new Map();
   for (const file of fs.readdirSync(TRACKS_DIR)) {
     if (file.toLowerCase().endsWith('.ogg')) map.set(file.slice(0, -4).toLowerCase(), file);
   }
+  tracksCache = map;
+  tracksCachedAt = now;
   return map;
 }
 
@@ -195,7 +203,14 @@ function autocomplete(interaction) {
   if (focused.name === 'variant' && !randomLoc) seen.add('random');
   if (focused.name === 'location') seen.add('random');
   const choices = [...seen].filter((c) => c.startsWith(norm(focused.value))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).slice(0, 25);
-  return interaction.respond(choices.map((c) => ({ name: c, value: c })));
+  // The 3s interaction window can expire (Pi lag, rapid typing); that's harmless
+  return interaction.respond(choices.map((c) => ({ name: c, value: c }))).catch((e) => {
+    if (e.code !== 10062) console.error('Autocomplete respond failed:', e);
+  });
 }
+
+// Don't let a failed interaction reply (e.g. expired token) take the bot down
+client.on('error', (e) => console.error('Client error:', e));
+process.on('unhandledRejection', (e) => console.error('Unhandled rejection:', e));
 
 client.login(process.env.DISCORD_TOKEN);
