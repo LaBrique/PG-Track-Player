@@ -4,8 +4,10 @@ const path = require('node:path');
 const { Client, GatewayIntentBits, SlashCommandBuilder, MessageFlags } = require('discord.js');
 const {
   joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource,
-  entersState, VoiceConnectionStatus, AudioPlayerStatus,
+  entersState, VoiceConnectionStatus, AudioPlayerStatus, generateDependencyReport,
 } = require('@discordjs/voice');
+
+console.log(`Node ${process.version} ${process.arch}\n${generateDependencyReport()}`);
 
 const TRACKS_DIR = path.join(__dirname, 'Tracks');
 
@@ -74,6 +76,7 @@ function getState(guildId) {
   if (!state) {
     state = { player: createAudioPlayer(), pick: null };
     state.player.on('error', (e) => console.error('Player error:', e.message));
+    state.player.on('stateChange', (o, n) => console.log(`Player: ${o.status} -> ${n.status}`));
     // Loop: when a track ends, play again (re-rolling if random)
     state.player.on(AudioPlayerStatus.Idle, () => {
       if (state.pick && getVoiceConnection(guildId)) playNext(state);
@@ -137,6 +140,8 @@ client.on('interactionCreate', async (interaction) => {
       guildId: channel.guild.id,
       adapterCreator: channel.guild.voiceAdapterCreator,
     });
+    connection.on('stateChange', (o, n) => console.log(`Voice: ${o.status} -> ${n.status}`));
+    connection.on('error', (e) => console.error('Voice error:', e));
   }
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
